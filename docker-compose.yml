@@ -1,0 +1,36 @@
+# Optional convenience file — spins up Postgres, MongoDB and Redis locally
+# so all three of BridgeX's data stores are available (Mongo in particular
+# isn't installable via apt in this sandbox, but works fine via Docker).
+#
+# Usage:
+#   docker compose up -d
+#   npm run migrate && npm run seed
+#   npm run dev
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: bridgex
+    ports:
+      - '5432:5432'
+    volumes:
+      - bridgex_pg_data:/var/lib/postgresql/data
+
+  mongo:
+    image: mongo:7
+    ports:
+      - '27017:27017'
+    volumes:
+      - bridgex_mongo_data:/data/db
+
+  redis:
+    image: redis:7
+    ports:
+      - '6379:6379'
+
+volumes:
+  bridgex_pg_data:
+  bridgex_mongo_data:

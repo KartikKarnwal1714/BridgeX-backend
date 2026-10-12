@@ -1,0 +1,43 @@
+{
+  "name": "bridgex-backend",
+  "version": "1.0.0",
+  "description": "BridgeX API — backend foundation (Phase 2)",
+  "main": "src/server.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "dev": "nodemon src/server.js",
+    "start": "node src/server.js",
+    "test": "jest --runInBand",
+    "test:watch": "jest --watch",
+    "migrate": "node scripts/runSql.js migrations/001_init.sql migrations/003_phase3.sql migrations/004_gateway.sql",
+    "seed": "node scripts/runSql.js --dev-only migrations/002_seed.sql"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.6.2",
+    "helmet": "^8.3.0",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.9.3",
+    "morgan": "^1.11.0",
+    "pg": "^8.23.0",
+    "redis": "^6.2.1",
+    "swagger-ui-express": "^5.0.1",
+    "uuid": "^14.0.2",
+    "yamljs": "^0.3.0"
+  },
+  "devDependencies": {
+    "jest": "^30.4.2",
+    "nodemon": "^3.1.14",
+    "supertest": "^7.2.2"
+  }
+}

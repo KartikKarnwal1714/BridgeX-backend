@@ -1,0 +1,763 @@
+openapi: 3.0.3
+info:
+  title: BridgeX API
+  description: >
+    A Resilient Multi-Protocol API Integration and Management Platform —
+    API reference for the endpoints currently implemented. Dashboard login uses JWT bearer tokens; Gateway traffic (/gateway/{slug}/...) is authenticated with BridgeX API keys, not JWTs; see the README for the gateway contract.
+  version: 1.0.0
+servers:
+  - url: /api/v1
+tags:
+  - name: Health
+  - name: Auth
+  - name: Users
+  - name: APIs
+  - name: Integrations
+  - name: Dashboard
+  - name: Analytics
+  - name: Logs
+  - name: API Keys
+  - name: System Health
+  - name: Settings
+  - name: Documentation
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    SuccessEnvelope:
+      type: object
+      properties:
+        success: { type: boolean, example: true }
+        data: { type: object }
+        message: { type: string }
+
+    ErrorEnvelope:
+      type: object
+      properties:
+        success: { type: boolean, example: false }
+        error:
+          type: object
+          properties:
+            code: { type: string, example: VALIDATION_ERROR }
+            message: { type: string }
+            details:
+              type: array
+              items: { type: object }
+
+    User:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        email: { type: string, format: email }
+        role: { type: string, enum: [SUPER_ADMIN, DEVELOPER, VIEWER, SUPPORT] }
+        status: { type: string, enum: [Active, Inactive] }
+        created_at: { type: string, format: date-time }
+        last_active: { type: string, format: date-time, nullable: true }
+
+    Api:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        protocol: { type: string, enum: [REST, GRAPHQL, SOAP] }
+        base_url: { type: string }
+        status: { type: string, enum: [Healthy, Degraded, Error] }
+        request_count: { type: integer }
+        success_rate: { type: number }
+        average_response_time: { type: integer }
+
+    Integration:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        type: { type: string }
+        protocol: { type: string, enum: [REST, GRAPHQL, SOAP] }
+        endpoint: { type: string }
+        status: { type: string, enum: [Connected, Error, Pending] }
+        last_sync: { type: string, format: date-time, nullable: true }
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid authentication
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    Forbidden:
+      description: Authenticated but not permitted
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    ValidationError:
+      description: Request failed validation
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+security:
+  - bearerAuth: []
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Service health check
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+
+  /health/live:
+    get:
+      tags: [Health]
+      summary: Liveness probe - the process is running (checks no dependencies)
+      security: []
+      responses:
+        '200':
+          description: Process is alive
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+
+  /health/ready:
+    get:
+      tags: [Health]
+      summary: Readiness probe - 200 only when PostgreSQL is reachable (Mongo/Redis are optional)
+      security: []
+      responses:
+        '200':
+          description: Ready to serve traffic
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+        '503':
+          description: Not ready (database unreachable)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name: { type: string }
+                email: { type: string, format: email }
+                password: { type: string, format: password, minLength: 8 }
+                role: { type: string, enum: [SUPER_ADMIN, DEVELOPER, VIEWER, SUPPORT] }
+      responses:
+        '201':
+          description: User registered
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '409':
+          description: Email already in use
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login and receive a JWT
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, format: password }
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Get the currently authenticated user
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /users:
+    get:
+      tags: [Users]
+      summary: List users
+      responses:
+        '200':
+          description: List of users
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Users]
+      summary: Create a user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/User' }
+      responses:
+        '201':
+          description: User created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '409':
+          description: Email already in use
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+  /users/{id}:
+    get:
+      tags: [Users]
+      summary: Get a user by ID
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: User
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Users]
+      summary: Update a user
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/User' }
+      responses:
+        '200':
+          description: User updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Users]
+      summary: Delete a user
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '204': { description: User deleted }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /apis:
+    get:
+      tags: [APIs]
+      summary: List registered APIs
+      responses:
+        '200':
+          description: List of APIs
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+    post:
+      tags: [APIs]
+      summary: Register a new API
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Api' }
+      responses:
+        '201':
+          description: API created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+
+  /apis/{id}:
+    get:
+      tags: [APIs]
+      summary: Get an API by ID
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: API
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [APIs]
+      summary: Update an API
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Api' }
+      responses:
+        '200':
+          description: API updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [APIs]
+      summary: Delete an API
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '204': { description: API deleted }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /integrations:
+    get:
+      tags: [Integrations]
+      summary: List integrations
+      responses:
+        '200':
+          description: List of integrations
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+    post:
+      tags: [Integrations]
+      summary: Create an integration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Integration' }
+      responses:
+        '201':
+          description: Integration created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+
+  /integrations/{id}:
+    get:
+      tags: [Integrations]
+      summary: Get an integration by ID
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Integration
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Integrations]
+      summary: Update an integration
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Integration' }
+      responses:
+        '200':
+          description: Integration updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Integrations]
+      summary: Delete an integration
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '204': { description: Integration deleted }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /dashboard/stats:
+    get:
+      tags: [Dashboard]
+      summary: Aggregate dashboard KPI stats
+      responses:
+        '200':
+          description: KPI stats
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+
+  /dashboard/traffic:
+    get:
+      tags: [Dashboard]
+      summary: Traffic overview series
+      responses:
+        '200':
+          description: Traffic series
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+
+  /dashboard/protocol-distribution:
+    get:
+      tags: [Dashboard]
+      summary: API count by protocol
+      responses:
+        '200':
+          description: Protocol distribution
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+
+  /dashboard/top-apis:
+    get:
+      tags: [Dashboard]
+      summary: Top APIs by request volume
+      responses:
+        '200':
+          description: Top APIs
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+
+  /dashboard/system-status:
+    get:
+      tags: [Dashboard]
+      summary: Live status of core system dependencies
+      responses:
+        '200':
+          description: System status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+
+  /analytics/cards:
+    get:
+      tags: [Analytics]
+      summary: Summary cards for a date range, computed from request logs (error = status >= 400)
+      parameters:
+        - name: from
+          in: query
+          description: ISO date-time. Default is 7 days before "to".
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          description: ISO date-time. Default is now.
+          schema: { type: string, format: date-time }
+        - name: interval
+          in: query
+          description: Bucket size. "hour" allows at most 7 days, "day" at most 90.
+          schema: { type: string, enum: [hour, day], default: day }
+      responses:
+        '200':
+          description: Analytics cards
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+
+  /analytics/traffic:
+    get:
+      tags: [Analytics]
+      summary: Requests over time for a date range (empty when no logs exist; never synthetic)
+      parameters:
+        - name: from
+          in: query
+          description: ISO date-time. Default is 7 days before "to".
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          description: ISO date-time. Default is now.
+          schema: { type: string, format: date-time }
+        - name: interval
+          in: query
+          description: Bucket size. "hour" allows at most 7 days, "day" at most 90.
+          schema: { type: string, enum: [hour, day], default: day }
+      responses:
+        '200':
+          description: Traffic series
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+
+  /analytics/top-endpoints:
+    get:
+      tags: [Analytics]
+      summary: Most-requested paths (query strings ignored) for a date range
+      parameters:
+        - name: from
+          in: query
+          description: ISO date-time. Default is 7 days before "to".
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          description: ISO date-time. Default is now.
+          schema: { type: string, format: date-time }
+        - name: interval
+          in: query
+          description: Bucket size. "hour" allows at most 7 days, "day" at most 90.
+          schema: { type: string, enum: [hour, day], default: day }
+      responses:
+        '200':
+          description: Top endpoints
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+
+  /analytics/gateway:
+    get:
+      tags: [Analytics]
+      summary: Gateway usage per API, per API key and per outcome (SUPER_ADMIN, DEVELOPER, SUPPORT only)
+      parameters:
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Gateway usage computed from the request log
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+
+  /logs:
+    get:
+      tags: [Logs]
+      summary: Search request logs (SUPER_ADMIN, DEVELOPER, SUPPORT only)
+      description: Returns `meta` with page, limit, total, totalPages and `available` (false when MongoDB is down).
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+        - name: q
+          in: query
+          description: Literal text matched against endpoint, service and correlation id
+          schema: { type: string, maxLength: 100 }
+        - { name: method, in: query, schema: { type: string, enum: [GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD] } }
+        - name: status
+          in: query
+          description: Exact code (404) or class (5xx)
+          schema: { type: string }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+      responses:
+        '200':
+          description: Request logs, newest first
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /logs/{id}:
+    get:
+      tags: [Logs]
+      summary: Get one request log entry (SUPER_ADMIN, DEVELOPER, SUPPORT only)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: The log entry
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503':
+          description: Log store (MongoDB) not connected
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+  /api-keys:
+    get:
+      tags: [API Keys]
+      summary: List API keys
+      responses:
+        '200':
+          description: API keys (previews only — full key is never returned again)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+    post:
+      tags: [API Keys]
+      summary: Create an API key. The full raw key is returned exactly once.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                environment: { type: string, enum: [Live, Test] }
+      responses:
+        '201':
+          description: Created — includes the one-time full key
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+
+  /api-keys/{id}/revoke:
+    patch:
+      tags: [API Keys]
+      summary: Revoke an API key
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Key revoked
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api-keys/{id}/gateway:
+    patch:
+      tags: [API Keys]
+      summary: Set a key's rate limit, expiry and allowed APIs (Super Admin only)
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                rateLimitPerMinute: { type: integer, minimum: 1, maximum: 10000 }
+                expiresAt: { type: string, format: date-time, nullable: true }
+                apiIds: { type: array, items: { type: integer } }
+      responses:
+        '200':
+          description: Gateway settings updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api-keys/{id}:
+    delete:
+      tags: [API Keys]
+      summary: Permanently delete an API key (Super Admin only)
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200': { description: Key deleted }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /system-health:
+    get:
+      tags: [System Health]
+      summary: Per-dependency status, latency and sampled availability (SUPER_ADMIN, DEVELOPER, SUPPORT only)
+      responses:
+        '200':
+          description: System health
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+
+  /system-health/alerts:
+    get:
+      tags: [System Health]
+      summary: Recent error/warning alerts derived from request logs
+      responses:
+        '200':
+          description: Recent alerts
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+
+  /settings:
+    get:
+      tags: [Settings]
+      summary: Get platform settings
+      responses:
+        '200':
+          description: Platform settings
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+    put:
+      tags: [Settings]
+      summary: Update platform settings (Super Admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200':
+          description: Updated settings
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+
+  /docs/endpoints:
+    get:
+      tags: [Documentation]
+      summary: Every real, currently registered endpoint, grouped by section
+      responses:
+        '200':
+          description: Endpoint map
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+
+components_parameters_placeholder: {}
+
+parameters: {}
